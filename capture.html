@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Time Tracker — Screen Capture</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e; color: #eee; min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; padding: 24px;
+    }
+    h1 { font-size: 22px; margin-bottom: 4px; color: #4cc9f0; }
+    .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
+    .card {
+      background: #16213e; border-radius: 12px; padding: 24px;
+      width: 100%; max-width: 460px; margin-bottom: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .card h3 { font-size: 14px; color: #4cc9f0; margin-bottom: 12px; }
+    .field { margin-bottom: 12px; }
+    .field label { display: block; font-size: 12px; color: #888; margin-bottom: 4px; }
+    .field input {
+      width: 100%; padding: 8px 12px; border: 1px solid #2a2a4a;
+      background: #0f0f23; color: #eee; border-radius: 6px;
+      font-size: 14px; font-family: monospace;
+    }
+    .field input:focus { border-color: #4cc9f0; outline: none; }
+    .btn {
+      padding: 10px 24px; border-radius: 8px; font-size: 14px;
+      font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+    }
+    .btn-start { background: #0f9d58; color: #fff; }
+    .btn-start:hover { background: #0b8043; }
+    .btn-stop { background: #d93025; color: #fff; }
+    .btn-stop:hover { background: #b3261e; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status-bar {
+      background: #0f0f23; border-radius: 8px; padding: 12px;
+      margin-top: 12px; font-size: 13px; line-height: 1.8;
+    }
+    .status-bar .stat { display: flex; justify-content: space-between; }
+    .status-bar .stat .val { color: #4cc9f0; font-weight: 600; }
+    .preview-wrap { margin-top: 16px; text-align: center; }
+    .preview-wrap video {
+      width: 100%; max-width: 420px; border-radius: 8px;
+      background: #000; border: 2px solid #2a2a4a;
+    }
+    .log {
+      background: #0f0f23; border-radius: 8px; padding: 12px;
+      font-size: 11px; font-family: monospace; max-height: 250px;
+      overflow-y: auto; line-height: 1.5; color: #888; margin-top: 12px;
+    }
+    .log .success { color: #0f9d58; }
+    .log .error { color: #d93025; }
+    .log .info { color: #4cc9f0; }
+    .log .warn { color: #f9ab00; }
+    .warning-box {
+      background: #332b00; border: 1px solid #f9ab00; border-radius: 8px;
+      padding: 12px; font-size: 12px; color: #f9ab00; margin-bottom: 16px;
+      line-height: 1.5; max-width: 460px; width: 100%;
+    }
+    .error-box {
+      background: #3b0000; border: 1px solid #d93025; border-radius: 8px;
+      padding: 12px; font-size: 12px; color: #ff6b6b; margin-bottom: 16px;
+      line-height: 1.5; max-width: 460px; width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>📷 Screen Capture</h1>
+  <p class="subtitle">Smart Time Tracker — External Capture Module</p>
+
+  <!-- Error box for missing params -->
+  <div id="errorBox" class="error-box" style="display:none;"></div>
+
+  <div class="card">
+    <h3>⚙️ Configuration</h3>
+    <div class="field">
+      <label>Session ID</label>
+      <input type="text" id="sessionId" readonly>
+    </div>
+    <div class="field">
+      <label>Capture Interval (seconds)</label>
+      <input type="number" id="interval" value="60" min="10" max="600">
+    </div>
+    <div class="field">
+      <label>Web App URL</label>
+      <input type="text" id="appUrl" readonly>
+    </div>
+  </div>
+
+  <div class="warning-box" id="warningBox">
+    ⚠️ <strong>Keep this window open</strong> while capturing.
+    Screenshots are taken every <span id="intervalLabel">60</span> seconds.
+  </div>
+
+  <div class="card">
+    <div style="text-align:center;margin-bottom:12px;">
+      <button id="btnStart" class="btn btn-start" onclick="startCapture()">▶ Start Capture</button>
+      <button id="btnStop" class="btn btn-stop" onclick="stopCapture()" style="display:none;">⏹ Stop Capture</button>
+    </div>
+
+    <div class="status-bar">
+      <div class="stat"><span>Status:</span><span class="val" id="captureStatus">Ready</span></div>
+      <div class="stat"><span>Screenshots Sent:</span><span class="val" id="sentCount">0</span></div>
+      <div class="stat"><span>Errors:</span><span class="val" id="errorCount" style="color:#d93025;">0</span></div>
+      <div class="stat"><span>Next Capture In:</span><span class="val" id="countdown">—</span></div>
+    </div>
+
+    <div class="preview-wrap">
+      <video id="preview" autoplay muted playsinline></video>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 Activity Log</h3>
+    <div class="log" id="logArea"></div>
+  </div>
+
+  <!-- HIDDEN IFRAME — REQUIRED for form POST to Apps Script -->
+  <iframe id="postFrame" name="postFrame" style="display:none;"></iframe>
+  <!-- HIDDEN CANVAS for image processing -->
+  <canvas id="captureCanvas" style="display:none;"></canvas>
+
+  <script>
+    /* ═══════════════════════════════════════════════════════════
+       Capture Page JavaScript
+       Sends screenshots via hidden iframe form POST
+       ═══════════════════════════════════════════════════════════ */
+
+    var captureState = {
+      sessionId: '',
+      interval: 60,
+      appUrl: '',
+      stream: null,
+      video: null,
+      canvas: null,
+      ctx: null,
+      captureTimer: null,
+      countdownTimer: null,
+      countdownValue: 0,
+      sentCount: 0,
+      errorCount: 0,
+      sending: false,
+      running: false
+    };
+
+    // ─── INIT ───────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', function() {
+      log('Capture page loaded', 'info');
+      log('Current URL: ' + window.location.href, 'info');
+
+      // Read URL parameters
+      var params = new URLSearchParams(window.location.search);
+      captureState.sessionId = params.get('session') || '';
+      captureState.interval = parseInt(params.get('interval'), 10) || 60;
+      captureState.appUrl = params.get('url') || '';
+
+      // Log all params for debugging
+      log('URL Parameters:', 'info');
+      log('  session = ' + (captureState.sessionId || 'MISSING!'), captureState.sessionId ? 'info' : 'error');
+      log('  interval = ' + captureState.interval, 'info');
+      log('  url = ' + (captureState.appUrl || 'MISSING!'), captureState.appUrl ? 'info' : 'error');
+
+      // Populate form fields
+      document.getElementById('sessionId').value = captureState.sessionId || '(not provided)';
+      document.getElementById('interval').value = captureState.interval;
+      document.getElementById('appUrl').value = captureState.appUrl || '(not provided)';
+      document.getElementById('intervalLabel').textContent = captureState.interval;
+
+      // Setup canvas
+      captureState.canvas = document.getElementById('captureCanvas');
+      captureState.ctx = captureState.canvas.getContext('2d');
+
+      // Validate required params
+      var errors = [];
+      if (!captureState.sessionId) errors.push('Session ID is missing from URL.');
+      if (!captureState.appUrl) errors.push('Web App URL is missing from URL.');
+
+      if (errors.length > 0) {
+        var errorBox = document.getElementById('errorBox');
+        errorBox.innerHTML = '<strong>❌ Cannot start capture:</strong><br>' + errors.join('<br>') +
+          '<br><br>This page must be opened from the Dashboard. Go back and click "Open Capture Window".';
+        errorBox.style.display = 'block';
+        document.getElementById('btnStart').disabled = true;
+        log('ERRORS: ' + errors.join('; '), 'error');
+      } else {
+        log('Configuration OK. Ready to capture.', 'success');
+      }
+
+      // Check for getDisplayMedia support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        log('ERROR: getDisplayMedia not supported in this browser! Use Chrome.', 'error');
+        var errorBox2 = document.getElementById('errorBox');
+        errorBox2.innerHTML = (errorBox2.innerHTML ? errorBox2.innerHTML + '<br>' : '') +
+          '<strong>❌ Browser not supported.</strong> Use Google Chrome.';
+        errorBox2.style.display = 'block';
+        document.getElementById('btnStart').disabled = true;
+      } else {
+        log('getDisplayMedia supported ✓', 'success');
+      }
+
+      // Check hidden iframe exists
+      var iframe = document.getElementById('postFrame');
+      if (iframe) {
+        log('Hidden iframe found ✓', 'success');
+      } else {
+        log('ERROR: Hidden iframe NOT found!', 'error');
+      }
+
+      // Allow interval change
+      document.getElementById('interval').addEventListener('change', function() {
+        captureState.interval = parseInt(this.value, 10) || 60;
+        document.getElementById('intervalLabel').textContent = captureState.interval;
+        log('Interval changed to ' + captureState.interval + 's', 'info');
+      });
+    });
+
+    // ─── START CAPTURE ──────────────────────────────────────────
+    async function startCapture() {
+      if (captureState.running) return;
+
+      if (!captureState.sessionId || !captureState.appUrl) {
+        log('Cannot start: missing session ID or web app URL.', 'error');
+        alert('Missing configuration. Open this page from the Dashboard.');
+        return;
+      }
+
+      try {
+        log('Requesting screen access via getDisplayMedia()...', 'info');
+        updateStatus('Requesting screen...');
+
+        captureState.stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: 'always' },
+          audio: false
+        });
+
+        log('Screen access GRANTED ✓', 'success');
+
+        var video = document.getElementById('preview');
+        video.srcObject = captureState.stream;
+        captureState.video = video;
+
+        // Wait for video to be ready
+        await new Promise(function(resolve) {
+          video.onloadedmetadata = function() {
+            log('Video metadata loaded: ' + video.videoWidth + 'x' + video.videoHeight, 'info');
+            resolve();
+          };
+          setTimeout(function() {
+            log('Video metadata timeout — proceeding anyway', 'warn');
+            resolve();
+          }, 3000);
+        });
+
+        captureState.running = true;
+        document.getElementById('btnStart').style.display = 'none';
+        document.getElementById('btnStop').style.display = '';
+        updateStatus('● Capturing');
+
+        // Handle user stopping screen share
+        captureState.stream.getVideoTracks()[0].addEventListener('ended', function() {
+          log('User stopped screen sharing', 'info');
+          stopCapture();
+        });
+
+        // First capture immediately
+        log('Taking first capture (start)...', 'info');
+        captureFrame('start');
+
+        // Set up interval
+        captureState.countdownValue = captureState.interval;
+        startCountdown();
+
+        captureState.captureTimer = setInterval(function() {
+          log('Auto capture triggered...', 'info');
+          captureFrame('auto');
+          captureState.countdownValue = captureState.interval;
+        }, captureState.interval * 1000);
+
+        log('Capture loop started. Interval: ' + captureState.interval + 's', 'success');
+
+      } catch (err) {
+        log('Capture start FAILED: ' + err.name + ': ' + err.message, 'error');
+        updateStatus('Failed');
+        if (err.name === 'NotAllowedError') {
+          log('User denied screen access or cancelled picker.', 'warn');
+        }
+      }
+    }
+
+    // ─── STOP CAPTURE ───────────────────────────────────────────
+    function stopCapture() {
+      if (captureState.captureTimer) { clearInterval(captureState.captureTimer); captureState.captureTimer = null; }
+      if (captureState.countdownTimer) { clearInterval(captureState.countdownTimer); captureState.countdownTimer = null; }
+
+      if (captureState.running && captureState.stream) {
+        log('Taking final capture (stop)...', 'info');
+        captureFrame('stop');
+      }
+
+      if (captureState.stream) {
+        captureState.stream.getTracks().forEach(function(t) { t.stop(); });
+        captureState.stream = null;
+      }
+
+      document.getElementById('preview').srcObject = null;
+      captureState.running = false;
+      document.getElementById('btnStart').style.display = '';
+      document.getElementById('btnStop').style.display = 'none';
+      updateStatus('Stopped');
+      document.getElementById('countdown').textContent = '—';
+
+      log('Capture stopped. Total sent: ' + captureState.sentCount + ', errors: ' + captureState.errorCount, 'info');
+    }
+
+    // ─── CAPTURE FRAME ──────────────────────────────────────────
+    function captureFrame(type) {
+      if (!captureState.stream || !captureState.video) {
+        log('No active stream — cannot capture', 'error');
+        return;
+      }
+
+      if (captureState.sending) {
+        log('Previous send still in progress — skipping this frame', 'warn');
+        return;
+      }
+
+      try {
+        var video = captureState.video;
+        var canvas = captureState.canvas;
+        var ctx = captureState.ctx;
+
+        var vw = video.videoWidth;
+        var vh = video.videoHeight;
+
+        if (!vw || !vh) {
+          log('Video dimensions not ready (' + vw + 'x' + vh + ') — skipping', 'error');
+          return;
+        }
+
+        // Resize if wider than 1280px
+        var scale = 1;
+        if (vw > 1280) scale = 1280 / vw;
+        canvas.width = Math.round(vw * scale);
+        canvas.height = Math.round(vh * scale);
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        var dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+
+        if (!dataUrl || dataUrl === 'data:,') {
+          log('Canvas produced empty image — skipping', 'error');
+          return;
+        }
+
+        var sizeKB = Math.round(dataUrl.length / 1024);
+        log('Frame captured: ' + canvas.width + 'x' + canvas.height + ', size: ' + sizeKB + ' KB', 'info');
+
+        var entryNum = captureState.sentCount + 1;
+        var payload = {
+          sessionId: captureState.sessionId,
+          n: entryNum,
+          time: new Date().toISOString(),
+          img: dataUrl,
+          type: type,
+          title: 'Capture #' + entryNum + ' (' + type + ')'
+        };
+
+        sendPayload(payload);
+
+      } catch (err) {
+        log('Capture error: ' + err.message, 'error');
+        captureState.errorCount++;
+        document.getElementById('errorCount').textContent = captureState.errorCount;
+      }
+    }
+
+    // ─── SEND PAYLOAD VIA HIDDEN IFRAME FORM POST ───────────────
+    function sendPayload(payload) {
+      if (captureState.sending) {
+        log('Already sending — skipped', 'warn');
+        return;
+      }
+
+      captureState.sending = true;
+      log('Sending capture #' + payload.n + ' (' + payload.type + ') to Apps Script...', 'info');
+      log('POST target: ' + captureState.appUrl.substring(0, 60) + '...', 'info');
+
+      try {
+        var payloadStr = JSON.stringify(payload);
+        log('Payload size: ' + Math.round(payloadStr.length / 1024) + ' KB', 'info');
+
+        // Create hidden form
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = captureState.appUrl;
+        form.target = 'postFrame';
+        form.style.display = 'none';
+
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'payload';
+        input.value = payloadStr;
+        form.appendChild(input);
+
+        document.body.appendChild(form);
+
+        log('Submitting form to iframe...', 'info');
+        form.submit();
+
+        // We can't read the iframe response (cross-origin) so assume success
+        captureState.sentCount++;
+        document.getElementById('sentCount').textContent = captureState.sentCount;
+        log('Capture #' + payload.n + ' submitted ✓ (total sent: ' + captureState.sentCount + ')', 'success');
+
+        // Clean up form after delay
+        setTimeout(function() {
+          try { if (form.parentNode) form.parentNode.removeChild(form); } catch(e) {}
+        }, 5000);
+
+      } catch (err) {
+        log('Send ERROR: ' + err.message, 'error');
+        captureState.errorCount++;
+        document.getElementById('errorCount').textContent = captureState.errorCount;
+      } finally {
+        // Release sending flag after delay
+        setTimeout(function() { captureState.sending = false; }, 2000);
+      }
+    }
+
+    // ─── COUNTDOWN ──────────────────────────────────────────────
+    function startCountdown() {
+      if (captureState.countdownTimer) clearInterval(captureState.countdownTimer);
+      captureState.countdownTimer = setInterval(function() {
+        captureState.countdownValue--;
+        if (captureState.countdownValue < 0) captureState.countdownValue = captureState.interval;
+        document.getElementById('countdown').textContent = captureState.countdownValue + 's';
+      }, 1000);
+    }
+
+    // ─── UI HELPERS ─────────────────────────────────────────────
+    function updateStatus(s) { document.getElementById('captureStatus').textContent = s; }
+
+    function log(message, type) {
+      var area = document.getElementById('logArea');
+      var time = new Date().toLocaleTimeString();
+      var entry = document.createElement('div');
+      entry.className = type || '';
+      entry.textContent = '[' + time + '] ' + message;
+      area.appendChild(entry);
+      area.scrollTop = area.scrollHeight;
+      console.log('[Capture ' + (type||'') + '] ' + message);
+    }
+
+    // Cleanup on close
+    window.addEventListener('beforeunload', function() {
+      if (captureState.running) stopCapture();
+    });
+  </script>
+</body>
+</html>
